@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <Windows.h>
-#include <winnt.h>
+#include <inttypes.h>
 
 void failure(const char* err);
 char* pe_data(const char* file);
@@ -12,15 +12,24 @@ void relocations(char* img_base, DWORD rva_reloc, PIMAGE_BASE_RELOCATION base_re
 void load_perms(char* img_base, PIMAGE_SECTION_HEADER sections, WORD nb_sections, DWORD hdrs_size);
 
 int main(int argc, char* argv[]) {
-    const char* pe = "C:\\Windows\\SysWOW64\\calc.exe";
-    // const char* pe = "C:\\Users\\ahaz1\\OneDrive\\Documents\\Personnel\\hello_world\\x64\\Debug\\hello_world.exe";
-    
+    const char* pe = "C:\\Windows\\SysWow64\\calc.exe";
+    // const char* pe = "C:\\Program Files\\NTCore\\Explorer Suite\\CFF Explorer.exe";
+
+    /*
+    HMODULE dll = LoadLibraryA("COMCTL32.dll");
+    if (!dll) failure("grrr #1");
+
+    FARPROC func = GetProcAddress(dll, 0x8);
+    if (!func) failure("grrr #2");
+    */
+
     char* data = pe_data(pe);
     void* ep   = load_pe(data);
 
     if (!ep) failure("Panic");
     ((void (*)(void)) ep)();
-    
+
+
     return EXIT_SUCCESS;
 }
 
@@ -31,7 +40,7 @@ void failure(const char* err) {
 
 char* pe_data(const char* pe) {
     FILE* fp;
-    if (fopen_s(&fp, pe, "rb") != 0) failure("fopen_s failed");
+    if (!(fp = fopen(pe, "rb"))) failure("fopen failed");
 
     fseek(fp, 0L, SEEK_END);
     long size = ftell(fp);
@@ -67,7 +76,7 @@ void* load_pe(char* data) {
     // printf("Size of headers: 0x%X\n", hdrs_size);
     // printf("Number of sections: 0x%X\n", nb_sections);
     // DEBUG END
-    
+
     // MAP PE INTO MEMORY
     char* img_base = (char*)VirtualAlloc(NULL, img_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     if (!img_base) failure("VirtualAlloc failed");
@@ -124,7 +133,8 @@ void load_imports(char* img_base, PIMAGE_IMPORT_DESCRIPTOR imp_descriptor) {
 
     PIMAGE_THUNK_DATA32 idt, iat; // 32 bits
     // PIMAGE_THUNK_DATA64 idt, iat; // 64 bits
-    DWORD funct_addr, funct_handle;
+    ULONGLONG funct_addr;
+    DWORD funct_handle;
     PIMAGE_IMPORT_BY_NAME funct_name = NULL;
 
     for (size_t i = 0; imp_descriptor[i].OriginalFirstThunk; i++) {
@@ -140,12 +150,10 @@ void load_imports(char* img_base, PIMAGE_IMPORT_DESCRIPTOR imp_descriptor) {
         iat = (PIMAGE_THUNK_DATA32)(img_base + imp_descriptor[i].FirstThunk); // 32 bits
         // idt = (PIMAGE_THUNK_DATA64)(img_base + imp_descriptor[i].OriginalFirstThunk); // 64 bits
         // iat = (PIMAGE_THUNK_DATA64)(img_base + imp_descriptor[i].FirstThunk); // 64 bits
-        
-        for (size_t j = 0; idt[j].u1.AddressOfData; j++) {
-            funct_addr = idt[j].u1.AddressOfData;
 
+        for (size_t j = 0; funct_addr = idt[j].u1.AddressOfData; j++) {
             if (funct_addr & IMAGE_ORDINAL_FLAG32) funct_handle = (DWORD)GetProcAddress(dll, (LPCSTR)funct_addr); // 32 bits
-            // if (funct_addr & IMAGE_ORDINAL_FLAG64) funct_handle = (DWORD)GetProcAddress(dll, (LPCSTR)funct_addr); // 64 bits
+            // if (funct_addr & IMAGE_ORDINAL_FLAG64) funct_handle = GetProcAddress(dll, (LPCSTR)funct_addr); // 64 bits
             else {
                 funct_name   = (PIMAGE_IMPORT_BY_NAME)(img_base + funct_addr);
                 funct_handle = (DWORD)GetProcAddress(dll, (LPCSTR)&funct_name->Name);
@@ -158,9 +166,10 @@ void load_imports(char* img_base, PIMAGE_IMPORT_DESCRIPTOR imp_descriptor) {
             if (!funct_handle) {
                 // DEBUG START
                 // printf("\n%s:\nFunction: %s\nAddress: 0x%X\n", dll_name, funct_name->Name, funct_addr);
+                // printf("%d\n", GetLastError());
                 // DEBUG END
 
-                // failure("GetProcAddress failed");
+                failure("GetProcAddress failed");
             }
 
             iat[j].u1.Function = funct_handle;
@@ -201,14 +210,14 @@ void load_perms(char* img_base, PIMAGE_SECTION_HEADER sections, WORD nb_sections
 
     if (!VirtualProtect(img_base, hdrs_size, PAGE_READONLY, &lpflOldProtect)) failure("VirtualProtect failed #1");
 
-    for (size_t section = 0; section < nb_sections; section++) {
-        dest = img_base + sections[section].VirtualAddress;
-        v_size = (size_t)sections[section].Misc.VirtualSize;
-        s_perm = sections[section].Characteristics;
+    for (WORD i = 0; i < nb_sections; i++) {
+        dest = img_base + sections[i].VirtualAddress;
+        v_size = (size_t)sections[i].Misc.VirtualSize;
+        s_perm = sections[i].Characteristics;
 
-        // READ: 2
-        // WRITE: 2
-        // EXECUTE: 16
+        // READ: 0x2
+        // WRITE: 0x2
+        // EXECUTE: 0x10
         v_perm = 1;
         if (s_perm & IMAGE_SCN_MEM_READ)    v_perm *= 0x2;
         if (s_perm & IMAGE_SCN_MEM_WRITE)   v_perm *= 0x2;
