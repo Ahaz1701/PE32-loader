@@ -12,23 +12,15 @@ void relocations(char* img_base, DWORD rva_reloc, PIMAGE_BASE_RELOCATION base_re
 void load_perms(char* img_base, PIMAGE_SECTION_HEADER sections, WORD nb_sections, DWORD hdrs_size);
 
 int main(int argc, char* argv[]) {
-    // const char* pe = "C:\\Windows\\SysWOW64\\calc.exe";
+    const char* pe = "C:\\Windows\\SysWOW64\\calc.exe";
     // const char* pe = "C:\\Users\\ahaz1\\OneDrive\\Documents\\Personnel\\hello_world\\x64\\Debug\\hello_world.exe";
-
-    HMODULE dll = LoadLibraryA("msvcrt.dll");
-    if (!dll) failure("LoadLibraryA failed");
-
-    FARPROC func = GetProcAddress(dll, (LPCSTR)"__p__fmode");
-    if (!func) failure("GetProcAddress failed");
-
-    /*
+    
     char* data = pe_data(pe);
     void* ep   = load_pe(data);
 
     if (!ep) failure("Panic");
     ((void (*)(void)) ep)();
-    */
-
+    
     return EXIT_SUCCESS;
 }
 
@@ -216,11 +208,11 @@ void load_perms(char* img_base, PIMAGE_SECTION_HEADER sections, WORD nb_sections
 
         // READ: 2
         // WRITE: 2
-        // EXECUTE: 10
+        // EXECUTE: 16
         v_perm = 1;
-        if (s_perm & IMAGE_SCN_MEM_READ)    v_perm *= 2;
-        if (s_perm & IMAGE_SCN_MEM_WRITE)   v_perm *= 2;
-        if (s_perm & IMAGE_SCN_MEM_EXECUTE) v_perm *= 10;
+        if (s_perm & IMAGE_SCN_MEM_READ)    v_perm *= 0x2;
+        if (s_perm & IMAGE_SCN_MEM_WRITE)   v_perm *= 0x2;
+        if (s_perm & IMAGE_SCN_MEM_EXECUTE) v_perm *= 0x10;
 
         if (!VirtualProtect(dest, v_size, v_perm, &lpflOldProtect)) failure("VirtualProtect failed #2");
     }
